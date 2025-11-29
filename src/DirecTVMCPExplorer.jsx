@@ -444,99 +444,105 @@ export default function DirecTVMCPExplorer() {
               {/* Arrow */}
               <div style={{ color: '#444', fontSize: '20px' }}>→</div>
 
-              {/* MCP Gateway */}
+              {/* MCP Gateway (contains Data Source Servers) */}
               <div 
-                onClick={() => handleComponentClick('gateway')}
                 style={{
-                  background: activeFlow && activeFlow.flow[flowStep]?.target === 'gateway' 
-                    ? 'linear-gradient(135deg, #E056FD30, #7B68EE30)' 
-                    : 'rgba(224,86,253,0.1)',
+                  background: activeFlow && (activeFlow.flow[flowStep]?.target === 'gateway' || activeFlow.recipe.serversUsed.includes(activeFlow.flow[flowStep]?.target))
+                    ? 'linear-gradient(135deg, #E056FD15, #7B68EE15)' 
+                    : 'rgba(224,86,253,0.05)',
                   border: '1px solid #E056FD40',
-                  borderRadius: '12px',
-                  padding: '16px',
-                  minWidth: '180px',
-                  cursor: 'pointer',
+                  borderRadius: '16px',
+                  padding: '20px',
+                  minWidth: '340px',
                   transition: 'all 0.3s'
                 }}
               >
-                <div style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'space-between',
-                  marginBottom: '8px'
-                }}>
-                  <span style={{ color: '#E056FD', fontWeight: 600, fontSize: '13px' }}>
+                {/* Gateway Header */}
+                <div 
+                  onClick={() => handleComponentClick('gateway')}
+                  style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'space-between',
+                    marginBottom: '12px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <span style={{ color: '#E056FD', fontWeight: 600, fontSize: '14px' }}>
                     MCP Gateway
                   </span>
                   <span style={{ 
-                    fontSize: '8px', 
+                    fontSize: '9px', 
                     background: 'rgba(224,86,253,0.2)', 
-                    padding: '2px 6px', 
+                    padding: '3px 8px', 
                     borderRadius: '4px',
                     color: '#E056FD'
                   }}>
                     AWS Lambda
                   </span>
                 </div>
-                <div style={{ fontSize: '9px', color: '#666' }}>
-                  Orchestration • Filtering • Auth
+                
+                <div style={{ fontSize: '9px', color: '#666', marginBottom: '12px' }}>
+                  Orchestration • Tool Filtering • Auth • Observability
                 </div>
+
                 {activeFlow && (
                   <div style={{ 
                     fontSize: '10px', 
                     color: '#E056FD', 
-                    marginTop: '8px',
-                    fontFamily: 'monospace'
+                    marginBottom: '12px',
+                    fontFamily: 'monospace',
+                    background: 'rgba(224,86,253,0.1)',
+                    padding: '6px 10px',
+                    borderRadius: '6px'
                   }}>
-                    {activeFlow.recipe.name}()
+                    Recipe: {activeFlow.recipe.name}()
                   </div>
                 )}
-              </div>
 
-              {/* Arrow */}
-              <div style={{ color: '#444', fontSize: '20px' }}>→</div>
-
-              {/* Data Source Servers */}
-              <div style={{
-                background: 'rgba(255,255,255,0.03)',
-                border: '1px solid rgba(255,255,255,0.08)',
-                borderRadius: '12px',
-                padding: '12px'
-              }}>
-                <div style={{ fontSize: '10px', color: '#666', marginBottom: '8px', textAlign: 'center' }}>
-                  DATA SOURCE SERVERS
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                  {['VCG', 'Biller', 'Offers', 'WFE'].map(serverId => {
-                    const server = dataSourceServers[serverId];
-                    const isActive = activeFlow?.recipe.serversUsed.includes(serverId) && 
-                                    activeFlow.flow[flowStep]?.target === serverId;
-                    return (
-                      <div
-                        key={serverId}
-                        onClick={() => handleComponentClick(serverId)}
-                        style={{
-                          background: isActive ? `${server.color}30` : 'rgba(0,0,0,0.3)',
-                          border: `1px solid ${isActive ? server.color : 'rgba(255,255,255,0.1)'}`,
-                          borderRadius: '6px',
-                          padding: '8px 10px',
-                          cursor: 'pointer',
-                          transition: 'all 0.3s'
-                        }}
-                      >
-                        <div style={{ 
-                          color: server.color, 
-                          fontSize: '11px', 
-                          fontWeight: 500 
-                        }}>
-                          {serverId}
+                {/* Nested Data Source Servers */}
+                <div style={{
+                  background: 'rgba(0,0,0,0.3)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  borderRadius: '10px',
+                  padding: '12px'
+                }}>
+                  <div style={{ fontSize: '9px', color: '#888', marginBottom: '10px', textAlign: 'center' }}>
+                    DATA SOURCE MCP SERVERS
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                    {['VCG', 'Biller', 'Offers', 'WFE'].map(serverId => {
+                      const server = dataSourceServers[serverId];
+                      const isActive = activeFlow?.recipe.serversUsed.includes(serverId) && 
+                                      activeFlow.flow[flowStep]?.target === serverId;
+                      const isUsed = activeFlow?.recipe.serversUsed.includes(serverId);
+                      return (
+                        <div
+                          key={serverId}
+                          onClick={() => handleComponentClick(serverId)}
+                          style={{
+                            background: isActive ? `${server.color}30` : isUsed ? `${server.color}15` : 'rgba(0,0,0,0.3)',
+                            border: `1px solid ${isActive ? server.color : isUsed ? server.color + '60' : 'rgba(255,255,255,0.1)'}`,
+                            borderRadius: '6px',
+                            padding: '8px 10px',
+                            cursor: 'pointer',
+                            transition: 'all 0.3s'
+                          }}
+                        >
+                          <div style={{ 
+                            color: isUsed ? server.color : '#888', 
+                            fontSize: '11px', 
+                            fontWeight: 500 
+                          }}>
+                            {serverId}
+                          </div>
+                          <div style={{ fontSize: '8px', color: '#666' }}>
+                            {server.tools.length} tools
+                          </div>
                         </div>
-                        <div style={{ fontSize: '8px', color: '#666' }}>
-                          {server.tools.length} tools
-                        </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
 
