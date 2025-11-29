@@ -1,4 +1,13 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+
+// ============================================
+// DirecTV MCP Architecture Explorer
+// Interactive visualization with chat interface
+// 
+// HOSTING:
+// - Demo: Deploy to Vercel/Replit for client presentations
+// - MCP Gateway: AWS (DirecTV infrastructure)
+// ============================================
 
 export default function DirecTVMCPExplorer() {
   const [selectedPlatform, setSelectedPlatform] = useState('sierra');
@@ -7,10 +16,11 @@ export default function DirecTVMCPExplorer() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [activeFlow, setActiveFlow] = useState(null);
   const [flowStep, setFlowStep] = useState(0);
-  const [modalContent, setModalContent] = useState(null);
+  const [selectedComponent, setSelectedComponent] = useState(null);
   const [comparisonMode, setComparisonMode] = useState('mcp');
   const chatEndRef = useRef(null);
 
+  // Platform configurations
   const platforms = {
     sierra: {
       name: 'Sierra',
@@ -26,15 +36,15 @@ export default function DirecTVMCPExplorer() {
       stats: { daily: 'All agents', containment: 'N/A' },
       color: '#FF6B35',
       tools: ['get_customer_profile', 'get_bill_history', 'compare_bills', 'get_offers', 'apply_offer', 'get_troubleshooting_flow', 'schedule_technician', 'issue_credit'],
-      description: 'Full capabilities for human agents via DTV360 Salesforce'
+      description: 'Full capabilities for human agents'
     },
     genesis: {
-      name: 'Genesis',
-      type: 'Voice IVR',
+      name: 'Genesys',
+      type: 'Voice',
       stats: { monthly: '3.5M', containment: '22%' },
       color: '#7B68EE',
       tools: ['get_customer_profile', 'get_bill_history', 'compare_bills', 'get_offers', 'get_troubleshooting_flow', 'escalate_to_agent'],
-      description: 'Voice IVR - read-only until validated (NLP bots migrating to Sierra)'
+      description: 'Voice IVR - read-only until validated'
     },
     copilot: {
       name: 'Copilot',
@@ -42,432 +52,137 @@ export default function DirecTVMCPExplorer() {
       stats: { status: 'Future' },
       color: '#FFD93D',
       tools: ['get_customer_profile', 'get_bill_history', 'compare_bills', 'get_offers', 'get_troubleshooting_flow', 'schedule_technician'],
-      description: 'Future internal employee tools (ChatGPT/Copilot Studio TBD)'
+      description: 'Future internal tools and dashboards'
     }
   };
 
-  // Detailed MCP Server definitions with schemas
-  const serverDefinitions = {
+  // Tool definitions
+  const toolDefinitions = {
+    get_customer_profile: {
+      name: 'get_customer_profile',
+      description: 'Retrieve customer info, services, packages, equipment, and account status',
+      server: 'VCG',
+      type: 'read',
+      latency: '~50ms',
+      triggers: ['who is this', 'what services', 'my account', 'my plan', 'what do i have', 'my package']
+    },
+    get_bill_history: {
+      name: 'get_bill_history',
+      description: 'Retrieve 6-month billing history with line-item details',
+      server: 'Biller',
+      type: 'read',
+      latency: '~50ms',
+      triggers: ['bill history', 'past bills', 'billing statements', 'payment history']
+    },
+    compare_bills: {
+      name: 'compare_bills',
+      description: 'Compare current bill to previous - promos, rate changes, usage, fees',
+      server: 'Multi',
+      type: 'read',
+      latency: '~100ms',
+      triggers: ['why is my bill', 'bill higher', 'what changed', 'explain charges', 'bill went up', 'bill increased']
+    },
+    get_offers: {
+      name: 'get_offers',
+      description: 'Get real-time eligible offers and promotions for customer',
+      server: 'Offers',
+      type: 'read',
+      latency: '~50ms',
+      triggers: ['deals', 'discounts', 'promotions', 'offers', 'save money', 'lower my bill']
+    },
+    apply_offer: {
+      name: 'apply_offer',
+      description: 'Apply an offer to customer account - transactional write-back',
+      server: 'Offers',
+      type: 'write',
+      latency: '~50ms',
+      triggers: ['apply', 'add that', 'give me that', 'accept offer', 'take the deal', 'yes apply']
+    },
+    get_troubleshooting_flow: {
+      name: 'get_troubleshooting_flow',
+      description: 'Get guided diagnostic flow for equipment issues and error codes',
+      server: 'WFE',
+      type: 'read',
+      latency: '~50ms',
+      triggers: ['not working', 'error', 'broken', 'fix', 'troubleshoot', 'help with', 'receiver', '771']
+    },
+    schedule_technician: {
+      name: 'schedule_technician',
+      description: 'Book a service technician appointment',
+      server: 'WFE',
+      type: 'write',
+      latency: '~50ms',
+      triggers: ['technician', 'appointment', 'send someone', 'schedule visit']
+    },
+    issue_credit: {
+      name: 'issue_credit',
+      description: 'Apply account credit for service issues',
+      server: 'Biller',
+      type: 'write',
+      latency: '~50ms',
+      triggers: ['credit', 'refund', 'compensation', 'make it right']
+    },
+    escalate_to_agent: {
+      name: 'escalate_to_agent',
+      description: 'Hand off conversation to human agent with full context',
+      server: 'Gateway',
+      type: 'action',
+      latency: '~10ms',
+      triggers: ['talk to someone', 'human', 'agent', 'representative', 'supervisor']
+    }
+  };
+
+  // Backend servers
+  const servers = {
     VCG: {
       name: 'VCG Server',
       fullName: 'Video Customer Gateway',
-      description: 'Aggregated customer interface providing snapshot of customer profile, packages, equipment, and account status. Primary identification layer.',
+      description: 'Customer profile, packages, equipment, account status',
       color: '#00D4AA',
-      icon: '👤',
-      latency: '~50ms',
-      sourceSystem: 'VCG Platform',
-      apiGateway: 'MuleSoft',
-      auth: {
-        type: 'OAuth 2.0 + Session Token',
-        tokenValidation: 'ForgeRock IDP',
-        waf: 'Akamai + AWS WAF',
-        clientAuth: 'Client ID + Client Secret per platform'
-      },
-      tools: [
-        {
-          name: 'get_customer_profile',
-          description: 'Retrieve customer snapshot including identity, services, packages, equipment, and account status. Use to identify who the customer is and route to correct biller system.',
-          platformAccess: {
-            sierra: { enabled: true, rateLimit: '1000/min' },
-            agentforce: { enabled: true, rateLimit: '2000/min' },
-            genesis: { enabled: true, rateLimit: '5000/min' },
-            copilot: { enabled: true, rateLimit: '500/min' }
-          },
-          schema: {
-            name: 'get_customer_profile',
-            description: 'Retrieve customer snapshot from VCG',
-            parameters: {
-              type: 'object',
-              properties: {
-                customer_id: { type: 'string', description: 'Customer account identifier' },
-                session_token: { type: 'string', description: 'Valid session token from ForgeRock' }
-              },
-              required: ['customer_id', 'session_token']
-            },
-            returns: {
-              customer_id: 'string',
-              name: 'string',
-              account_status: 'active | suspended | cancelled',
-              customer_type: 'satellite | stream',
-              biller_system: 'biller_1 | biller_2 | biller_3',
-              packages: 'string[]',
-              equipment: 'object[]',
-              tenure_months: 'integer'
-            }
-          }
-        }
-      ],
-      notes: [
-        'VCG provides snapshot only — cannot answer "why" questions',
-        'Use biller_system field to route subsequent billing queries',
-        'Equipment list needed for troubleshooting flows'
-      ]
+      icon: '👤'
     },
     Biller: {
       name: 'Biller Server',
-      fullName: '3 Billing Systems (Satellite + Stream)',
-      description: 'Unified interface to 3 separate biller systems. Provides bill history, comparisons, payment status, and transactional credits. Primary driver of escalations (40% of volume).',
+      fullName: '3 Billing Systems',
+      description: 'Bill history, comparisons, payment status, credits',
       color: '#FF6B35',
-      icon: '💳',
-      latency: '~50ms per biller',
-      sourceSystem: '3 Biller Platforms',
-      apiGateway: 'MuleSoft',
-      auth: {
-        type: 'OAuth 2.0 + Session Token',
-        tokenValidation: 'ForgeRock IDP',
-        waf: 'Akamai + AWS WAF',
-        clientAuth: 'Client ID + Client Secret per platform'
-      },
-      tools: [
-        {
-          name: 'get_bill_history',
-          description: 'Retrieve 6-month billing history with line-item details. Routes to correct biller based on customer_type.',
-          platformAccess: {
-            sierra: { enabled: true, rateLimit: '1000/min' },
-            agentforce: { enabled: true, rateLimit: '2000/min' },
-            genesis: { enabled: true, rateLimit: '5000/min' },
-            copilot: { enabled: true, rateLimit: '500/min' }
-          },
-          schema: {
-            name: 'get_bill_history',
-            description: 'Retrieve billing history for customer',
-            parameters: {
-              type: 'object',
-              properties: {
-                customer_id: { type: 'string' },
-                biller_system: { type: 'string', description: 'From VCG profile' },
-                months: { type: 'integer', default: 6 }
-              },
-              required: ['customer_id', 'biller_system']
-            },
-            returns: {
-              bills: '[{ period, total, line_items[], due_date, payment_status }]'
-            }
-          }
-        },
-        {
-          name: 'compare_bills',
-          description: 'Compare current bill to previous. Returns itemized differences. Gateway orchestrates parallel calls to VCG + Biller + Offers.',
-          platformAccess: {
-            sierra: { enabled: true, rateLimit: '1000/min' },
-            agentforce: { enabled: true, rateLimit: '2000/min' },
-            genesis: { enabled: true, rateLimit: '5000/min' },
-            copilot: { enabled: true, rateLimit: '500/min' }
-          },
-          schema: {
-            name: 'compare_bills',
-            description: 'Compare current vs previous bill with itemized changes',
-            parameters: {
-              type: 'object',
-              properties: {
-                customer_id: { type: 'string' }
-              },
-              required: ['customer_id']
-            },
-            returns: {
-              current_total: 'number',
-              previous_total: 'number',
-              difference: 'number',
-              changes: '[{ category, description, amount }]'
-            }
-          }
-        },
-        {
-          name: 'issue_credit',
-          description: 'Apply account credit for service issues. Agent-only capability.',
-          platformAccess: {
-            sierra: { enabled: false, reason: 'Customer-facing - requires agent' },
-            agentforce: { enabled: true, rateLimit: '500/min' },
-            genesis: { enabled: false, reason: 'Voice channel - not enabled' },
-            copilot: { enabled: false, reason: 'Internal - not enabled' }
-          },
-          schema: {
-            name: 'issue_credit',
-            description: 'Apply credit to customer account (WRITE)',
-            parameters: {
-              type: 'object',
-              properties: {
-                customer_id: { type: 'string' },
-                amount: { type: 'number' },
-                reason_code: { type: 'string', enum: ['service_interruption', 'billing_error', 'retention', 'goodwill'] },
-                agent_id: { type: 'string', description: 'Required for audit' }
-              },
-              required: ['customer_id', 'amount', 'reason_code', 'agent_id']
-            },
-            returns: {
-              success: 'boolean',
-              confirmation_number: 'string',
-              new_balance: 'number'
-            }
-          }
-        }
-      ],
-      notes: [
-        '"Lower my bill" is #2 escalation driver',
-        'Billing & payments = 40% of escalations',
-        'Snowflake has billing data but 24hr lag — use direct API',
-        'compare_bills orchestrates 3 parallel calls'
-      ]
+      icon: '💳'
     },
     Offers: {
       name: 'Offers Server',
       fullName: 'Decisioning Engine',
-      description: 'Real-time offer eligibility and fulfillment. First transactional (write) capability planned for 2026. Handles both offer details and offer acceptance.',
+      description: 'Real-time eligibility, offer application',
       color: '#7B68EE',
-      icon: '🎁',
-      latency: '~50ms',
-      sourceSystem: 'Decisioning Engine',
-      apiGateway: 'MuleSoft',
-      auth: {
-        type: 'OAuth 2.0 + Session Token',
-        tokenValidation: 'ForgeRock IDP',
-        waf: 'Akamai + AWS WAF',
-        clientAuth: 'Client ID + Client Secret per platform'
-      },
-      tools: [
-        {
-          name: 'get_offers',
-          description: 'Get real-time eligible offers based on customer profile, tenure, and history.',
-          platformAccess: {
-            sierra: { enabled: true, rateLimit: '1000/min' },
-            agentforce: { enabled: true, rateLimit: '2000/min' },
-            genesis: { enabled: true, rateLimit: '5000/min' },
-            copilot: { enabled: true, rateLimit: '500/min' }
-          },
-          schema: {
-            name: 'get_offers',
-            description: 'Retrieve eligible offers for customer',
-            parameters: {
-              type: 'object',
-              properties: {
-                customer_id: { type: 'string' },
-                context: { type: 'string', enum: ['retention', 'upsell', 'service_recovery', 'general'] }
-              },
-              required: ['customer_id']
-            },
-            returns: {
-              offers: '[{ offer_id, name, description, monthly_value, duration_months }]'
-            }
-          }
-        },
-        {
-          name: 'apply_offer',
-          description: 'Apply offer to customer account. Transactional write-back. 2026 milestone.',
-          platformAccess: {
-            sierra: { enabled: true, rateLimit: '500/min', note: '2026 Q1' },
-            agentforce: { enabled: true, rateLimit: '1000/min' },
-            genesis: { enabled: false, reason: 'Validate in chat first' },
-            copilot: { enabled: false, reason: 'Not customer-facing' }
-          },
-          schema: {
-            name: 'apply_offer',
-            description: 'Apply offer to customer account (WRITE)',
-            parameters: {
-              type: 'object',
-              properties: {
-                customer_id: { type: 'string' },
-                offer_id: { type: 'string' },
-                acceptance_channel: { type: 'string', enum: ['chat', 'voice', 'agent', 'web'] }
-              },
-              required: ['customer_id', 'offer_id', 'acceptance_channel']
-            },
-            returns: {
-              success: 'boolean',
-              confirmation_number: 'string',
-              effective_date: 'string',
-              new_monthly_total: 'number'
-            }
-          }
-        }
-      ],
-      notes: [
-        'First write capability for Sierra planned Q1 2026',
-        'Today: Sierra provides links to self-service pages',
-        'Must write back declined offers for analytics'
-      ]
+      icon: '🎁'
     },
     WFE: {
       name: 'WFE Server',
       fullName: 'Workflow Engine',
-      description: 'Device troubleshooting and diagnostic flows. Provides guided step-by-step resolution paths based on equipment type and error codes.',
+      description: 'Device troubleshooting, diagnostics',
       color: '#FFD93D',
-      icon: '🔧',
-      latency: '~50ms',
-      sourceSystem: 'Workflow Engine + Care Flows',
-      apiGateway: 'MuleSoft',
-      auth: {
-        type: 'OAuth 2.0 + Session Token',
-        tokenValidation: 'ForgeRock IDP',
-        waf: 'Akamai + AWS WAF',
-        clientAuth: 'Client ID + Client Secret per platform'
-      },
-      tools: [
-        {
-          name: 'get_troubleshooting_flow',
-          description: 'Get guided diagnostic flow for equipment issues based on equipment type, error code, and symptom.',
-          platformAccess: {
-            sierra: { enabled: true, rateLimit: '1000/min' },
-            agentforce: { enabled: true, rateLimit: '2000/min' },
-            genesis: { enabled: true, rateLimit: '5000/min', note: 'Primary voice use case' },
-            copilot: { enabled: true, rateLimit: '500/min' }
-          },
-          schema: {
-            name: 'get_troubleshooting_flow',
-            description: 'Retrieve diagnostic flow for equipment issue',
-            parameters: {
-              type: 'object',
-              properties: {
-                customer_id: { type: 'string' },
-                equipment_id: { type: 'string', description: 'From VCG profile' },
-                error_code: { type: 'string', description: 'e.g., 771, 775' },
-                symptom: { type: 'string', enum: ['no_picture', 'no_sound', 'frozen', 'error_code', 'remote_not_working', 'recording_issue'] }
-              },
-              required: ['customer_id']
-            },
-            returns: {
-              flow_id: 'string',
-              current_step: 'integer',
-              total_steps: 'integer',
-              step_instruction: 'string',
-              expected_outcomes: 'string[]',
-              escalation_trigger: 'boolean'
-            }
-          }
-        },
-        {
-          name: 'schedule_technician',
-          description: 'Book service technician appointment. Agent-only for now.',
-          platformAccess: {
-            sierra: { enabled: false, reason: 'Requires agent validation' },
-            agentforce: { enabled: true, rateLimit: '500/min' },
-            genesis: { enabled: false, reason: 'Transfer to agent' },
-            copilot: { enabled: true, rateLimit: '200/min', note: 'Internal scheduling' }
-          },
-          schema: {
-            name: 'schedule_technician',
-            description: 'Schedule technician visit (WRITE)',
-            parameters: {
-              type: 'object',
-              properties: {
-                customer_id: { type: 'string' },
-                issue_type: { type: 'string', enum: ['installation', 'repair', 'upgrade', 'relocation'] },
-                preferred_date: { type: 'string' },
-                preferred_window: { type: 'string', enum: ['morning', 'afternoon', 'evening'] },
-                agent_id: { type: 'string' }
-              },
-              required: ['customer_id', 'issue_type']
-            },
-            returns: {
-              success: 'boolean',
-              confirmation_number: 'string',
-              scheduled_date: 'string',
-              scheduled_window: 'string'
-            }
-          }
-        }
-      ],
-      notes: [
-        'Troubleshooting is #1 voice driver',
-        'Genesis NLP bots: 22% containment → Sierra target: 40%+',
-        'Equipment context from VCG required for accurate flows',
-        'Error code 771 = signal loss (most common)'
-      ]
+      icon: '🔧'
     },
     Gateway: {
       name: 'MCP Gateway',
-      fullName: 'DirecTV MCP Gateway (AWS)',
-      description: 'Central orchestration layer hosted on AWS. Handles tool discovery, platform-based filtering, request routing, parallel orchestration, and response normalization. No LLM — deterministic only.',
+      fullName: 'AWS-Hosted Gateway',
+      description: 'Tool routing, platform filtering, orchestration',
       color: '#E056FD',
-      icon: '⚡',
-      latency: '<200ms total',
-      sourceSystem: 'AWS (DirecTV Infrastructure)',
-      apiGateway: 'Direct MCP Protocol',
-      auth: {
-        type: 'Platform Authentication',
-        platformValidation: 'Client ID + Secret per platform',
-        sessionValidation: 'Passed through to backend servers',
-        auditLogging: 'All requests logged'
-      },
-      tools: [
-        {
-          name: 'list_tools',
-          description: 'Returns available tools filtered by calling platform. Each platform sees only tools they have access to.',
-          platformAccess: {
-            sierra: { enabled: true, tools_visible: 7 },
-            agentforce: { enabled: true, tools_visible: 8 },
-            genesis: { enabled: true, tools_visible: 6 },
-            copilot: { enabled: true, tools_visible: 6 }
-          },
-          schema: {
-            name: 'list_tools',
-            description: 'Discover available tools (filtered by platform)',
-            parameters: {
-              type: 'object',
-              properties: {
-                platform_id: { type: 'string', description: 'Authenticated platform identifier' }
-              },
-              required: ['platform_id']
-            },
-            returns: {
-              tools: '[{ name, description, parameters }]'
-            }
-          }
-        },
-        {
-          name: 'escalate_to_agent',
-          description: 'Hand off conversation to human agent with full context transfer to DTV360.',
-          platformAccess: {
-            sierra: { enabled: true, rateLimit: 'unlimited' },
-            agentforce: { enabled: false, reason: 'Already agent channel' },
-            genesis: { enabled: true, rateLimit: 'unlimited' },
-            copilot: { enabled: false, reason: 'Internal channel' }
-          },
-          schema: {
-            name: 'escalate_to_agent',
-            description: 'Transfer to human agent with context',
-            parameters: {
-              type: 'object',
-              properties: {
-                customer_id: { type: 'string' },
-                conversation_summary: { type: 'string' },
-                escalation_reason: { type: 'string', enum: ['customer_request', 'complex_issue', 'policy_exception', 'technical_failure'] },
-                context_data: { type: 'object' }
-              },
-              required: ['customer_id', 'escalation_reason']
-            },
-            returns: {
-              transfer_id: 'string',
-              estimated_wait: 'string',
-              queue_position: 'integer',
-              context_transferred: 'boolean'
-            }
-          }
-        }
-      ],
-      notes: [
-        'No LLM in gateway — deterministic routing only',
-        'Parallel orchestration for multi-server calls',
-        'Single endpoint for all platforms — filter by platform_id',
-        'All requests logged for audit trail'
-      ]
+      icon: '⚡'
+    },
+    Multi: {
+      name: 'Parallel Calls',
+      fullName: 'Multi-Server Orchestration',
+      description: 'VCG + Biller + Offers in parallel',
+      color: '#E056FD',
+      icon: '⚡'
     }
   };
 
-  const toolDefinitions = {
-    get_customer_profile: { name: 'get_customer_profile', server: 'VCG', type: 'read', latency: '~50ms', triggers: ['who is this', 'what services', 'my account', 'my plan', 'what do i have', 'my package'] },
-    get_bill_history: { name: 'get_bill_history', server: 'Biller', type: 'read', latency: '~50ms', triggers: ['bill history', 'past bills', 'billing statements', 'payment history'] },
-    compare_bills: { name: 'compare_bills', server: 'Biller', type: 'read', latency: '~100ms', triggers: ['why is my bill', 'bill higher', 'what changed', 'explain charges', 'bill went up', 'bill increased'] },
-    get_offers: { name: 'get_offers', server: 'Offers', type: 'read', latency: '~50ms', triggers: ['deals', 'discounts', 'promotions', 'offers', 'save money', 'lower my bill'] },
-    apply_offer: { name: 'apply_offer', server: 'Offers', type: 'write', latency: '~50ms', triggers: ['apply', 'add that', 'give me that', 'accept offer', 'take the deal', 'yes apply'] },
-    get_troubleshooting_flow: { name: 'get_troubleshooting_flow', server: 'WFE', type: 'read', latency: '~50ms', triggers: ['not working', 'error', 'broken', 'fix', 'troubleshoot', 'help with', 'receiver', '771'] },
-    schedule_technician: { name: 'schedule_technician', server: 'WFE', type: 'write', latency: '~50ms', triggers: ['technician', 'appointment', 'send someone', 'schedule visit'] },
-    issue_credit: { name: 'issue_credit', server: 'Biller', type: 'write', latency: '~50ms', triggers: ['credit', 'refund', 'compensation', 'make it right'] },
-    escalate_to_agent: { name: 'escalate_to_agent', server: 'Gateway', type: 'action', latency: '~10ms', triggers: ['talk to someone', 'human', 'agent', 'representative', 'supervisor'] }
-  };
-
+  // Match user input to a tool
   const matchTool = (input) => {
     const lowerInput = input.toLowerCase();
     const platform = platforms[selectedPlatform];
+    
     for (const [toolId, tool] of Object.entries(toolDefinitions)) {
       if (!platform.tools.includes(toolId)) continue;
       for (const trigger of tool.triggers) {
@@ -477,13 +192,15 @@ export default function DirecTVMCPExplorer() {
     return toolDefinitions.get_customer_profile;
   };
 
+  // Generate animation flow
   const generateFlow = (tool) => {
     const flow = [
       { id: 'input', label: 'Query received', target: 'platform' },
       { id: 'llm', label: `LLM → ${tool.name}()`, target: 'platform' },
       { id: 'gateway', label: 'MCP Gateway (AWS)', target: 'gateway' },
     ];
-    if (tool.server === 'Biller' && tool.name === 'compare_bills') {
+
+    if (tool.server === 'Multi') {
       flow.push(
         { id: 'parallel', label: 'Parallel orchestration', target: 'gateway' },
         { id: 'vcg', label: 'VCG Server', target: 'VCG' },
@@ -493,17 +210,20 @@ export default function DirecTVMCPExplorer() {
     } else {
       flow.push({ id: 'server', label: `${tool.server} Server`, target: tool.server });
     }
+
     flow.push(
       { id: 'mulesoft', label: 'MuleSoft API Gateway', target: 'mulesoft' },
       { id: 'source', label: 'Source Systems', target: 'source' },
       { id: 'response', label: 'Response returned', target: 'platform' }
     );
+
     return flow;
   };
 
+  // Generate response based on tool
   const generateResponse = (tool) => {
     const responses = {
-      get_customer_profile: `**Customer Profile**\n\n• Account: Active (Satellite)\n• Package: Ultimate + Sports\n• Equipment: 3 Genie receivers\n• Customer since: March 2019\n• Biller System: biller_1\n• Status: Good standing`,
+      get_customer_profile: `**Customer Profile**\n\n• Account: Active (Satellite)\n• Package: Ultimate + Sports\n• Equipment: 3 Genie receivers\n• Customer since: March 2019\n• Status: Good standing`,
       get_bill_history: `**Bill History (6 months)**\n\n• Nov 2025: $142.50\n• Oct 2025: $142.50\n• Sep 2025: $142.50\n• Aug 2025: $127.50\n• Jul 2025: $127.50\n• Jun 2025: $127.50`,
       compare_bills: `**Bill Comparison**\n\nCurrent: $142.50 → Previous: $127.50\n**Change: +$15.00**\n\n**What changed:**\n• HBO Max promo expired: +$15.99\n• Regional sports fee increase: +$2.00\n• Loyalty credit applied: -$2.99\n\n_Would you like to see available offers?_`,
       get_offers: `**Available Offers**\n\n1. 🎬 **HBO Max** — $10/mo (50% off)\n2. 📺 **Sports Pack** — Free for 3 months\n3. 💰 **Loyalty Discount** — $10/mo off for 12 months\n\n_Say "apply" + offer name to add to your account._`,
@@ -516,6 +236,7 @@ export default function DirecTVMCPExplorer() {
     return responses[tool.name] || 'Request processed.';
   };
 
+  // Handle chat submit
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!chatInput.trim() || isProcessing) return;
@@ -530,6 +251,7 @@ export default function DirecTVMCPExplorer() {
     setActiveFlow({ tool, steps: flow });
     setFlowStep(0);
 
+    // Animate through steps
     for (let i = 0; i < flow.length; i++) {
       await new Promise(r => setTimeout(r, 400));
       setFlowStep(i + 1);
@@ -547,10 +269,7 @@ export default function DirecTVMCPExplorer() {
     setTimeout(() => setActiveFlow(null), 1500);
   };
 
-  const openServerModal = (serverKey) => {
-    setModalContent({ type: 'server', data: serverDefinitions[serverKey], key: serverKey });
-  };
-
+  // Quick actions
   const quickActions = [
     "Why is my bill higher?",
     "What services do I have?",
@@ -563,225 +282,10 @@ export default function DirecTVMCPExplorer() {
   }, [conversation]);
 
   const currentPlatform = platforms[selectedPlatform];
-
-  // Modal Component
-  const Modal = ({ content, onClose }) => {
-    if (!content) return null;
-    const server = content.data;
-    const [activeToolIdx, setActiveToolIdx] = useState(0);
-    const activeTool = server.tools[activeToolIdx];
-
-    return (
-      <div style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(0,0,0,0.85)',
-        backdropFilter: 'blur(8px)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 1000,
-        padding: '20px'
-      }} onClick={onClose}>
-        <div style={{
-          background: '#12121a',
-          border: '1px solid rgba(255,255,255,0.1)',
-          borderRadius: '16px',
-          width: '100%',
-          maxWidth: '850px',
-          maxHeight: '90vh',
-          overflow: 'hidden',
-          display: 'flex',
-          flexDirection: 'column'
-        }} onClick={e => e.stopPropagation()}>
-          {/* Header */}
-          <div style={{
-            padding: '20px 24px',
-            borderBottom: '1px solid rgba(255,255,255,0.06)',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'start'
-          }}>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '4px' }}>
-                <span style={{ fontSize: '24px' }}>{server.icon}</span>
-                <span style={{ fontSize: '18px', fontWeight: 600, color: server.color }}>{server.name}</span>
-              </div>
-              <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)' }}>{server.fullName}</div>
-              <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)', marginTop: '8px', maxWidth: '600px', lineHeight: 1.5 }}>
-                {server.description}
-              </div>
-            </div>
-            <button onClick={onClose} style={{
-              background: 'rgba(255,255,255,0.1)',
-              border: 'none',
-              borderRadius: '8px',
-              color: '#fff',
-              width: '32px',
-              height: '32px',
-              cursor: 'pointer',
-              fontSize: '16px'
-            }}>×</button>
-          </div>
-
-          {/* Content */}
-          <div style={{ flex: 1, overflow: 'auto', padding: '20px 24px' }}>
-            {/* Security Section */}
-            <div style={{ marginBottom: '24px' }}>
-              <div style={{ fontSize: '10px', letterSpacing: '1px', color: 'rgba(255,255,255,0.4)', marginBottom: '12px' }}>
-                SECURITY & AUTH
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px' }}>
-                <div style={{ padding: '12px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px' }}>
-                  <div style={{ fontSize: '8px', color: 'rgba(255,255,255,0.4)', marginBottom: '4px' }}>AUTH TYPE</div>
-                  <div style={{ fontSize: '10px', color: '#fff' }}>{server.auth.type}</div>
-                </div>
-                <div style={{ padding: '12px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px' }}>
-                  <div style={{ fontSize: '8px', color: 'rgba(255,255,255,0.4)', marginBottom: '4px' }}>API GATEWAY</div>
-                  <div style={{ fontSize: '10px', color: '#fff' }}>{server.apiGateway}</div>
-                </div>
-                <div style={{ padding: '12px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px' }}>
-                  <div style={{ fontSize: '8px', color: 'rgba(255,255,255,0.4)', marginBottom: '4px' }}>TOKEN VALIDATION</div>
-                  <div style={{ fontSize: '10px', color: '#fff' }}>{server.auth.tokenValidation || server.auth.platformValidation}</div>
-                </div>
-                <div style={{ padding: '12px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px' }}>
-                  <div style={{ fontSize: '8px', color: 'rgba(255,255,255,0.4)', marginBottom: '4px' }}>LATENCY</div>
-                  <div style={{ fontSize: '10px', color: server.color }}>{server.latency}</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Tools Section */}
-            <div style={{ marginBottom: '24px' }}>
-              <div style={{ fontSize: '10px', letterSpacing: '1px', color: 'rgba(255,255,255,0.4)', marginBottom: '12px' }}>
-                MCP TOOLS ({server.tools.length})
-              </div>
-              
-              {/* Tool Tabs */}
-              <div style={{ display: 'flex', gap: '4px', marginBottom: '16px', flexWrap: 'wrap' }}>
-                {server.tools.map((tool, idx) => (
-                  <button
-                    key={tool.name}
-                    onClick={() => setActiveToolIdx(idx)}
-                    style={{
-                      padding: '6px 12px',
-                      background: activeToolIdx === idx ? server.color : 'rgba(255,255,255,0.05)',
-                      color: activeToolIdx === idx ? '#000' : 'rgba(255,255,255,0.6)',
-                      border: 'none',
-                      borderRadius: '6px',
-                      fontSize: '10px',
-                      fontFamily: 'inherit',
-                      cursor: 'pointer',
-                      fontWeight: activeToolIdx === idx ? 600 : 400
-                    }}
-                  >
-                    {tool.name}
-                  </button>
-                ))}
-              </div>
-
-              {/* Active Tool Details */}
-              {activeTool && (
-                <div>
-                  <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.7)', marginBottom: '16px', lineHeight: 1.5 }}>
-                    {activeTool.description}
-                  </div>
-
-                  {/* Platform Access - THE KEY PART */}
-                  <div style={{ marginBottom: '16px' }}>
-                    <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', marginBottom: '8px' }}>PLATFORM ACCESS (Part of MCP Schema)</div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
-                      {Object.entries(activeTool.platformAccess).map(([platformKey, access]) => (
-                        <div key={platformKey} style={{
-                          padding: '10px 12px',
-                          background: access.enabled ? `${platforms[platformKey].color}10` : 'rgba(255,60,60,0.05)',
-                          border: `1px solid ${access.enabled ? platforms[platformKey].color + '40' : 'rgba(255,60,60,0.2)'}`,
-                          borderRadius: '8px'
-                        }}>
-                          <div style={{ 
-                            fontSize: '11px', 
-                            fontWeight: 600, 
-                            color: access.enabled ? platforms[platformKey].color : '#ff6b6b',
-                            marginBottom: '4px'
-                          }}>
-                            {access.enabled ? '✓' : '✗'} {platforms[platformKey].name}
-                          </div>
-                          {access.enabled && access.rateLimit && (
-                            <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.5)' }}>
-                              Rate: {access.rateLimit}
-                            </div>
-                          )}
-                          {access.enabled && access.note && (
-                            <div style={{ fontSize: '8px', color: platforms[platformKey].color, marginTop: '2px' }}>
-                              {access.note}
-                            </div>
-                          )}
-                          {access.enabled && access.tools_visible && (
-                            <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.5)' }}>
-                              {access.tools_visible} tools visible
-                            </div>
-                          )}
-                          {!access.enabled && access.reason && (
-                            <div style={{ fontSize: '8px', color: 'rgba(255,255,255,0.4)', marginTop: '2px' }}>
-                              {access.reason}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Schema */}
-                  <div>
-                    <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', marginBottom: '8px' }}>MCP TOOL SCHEMA</div>
-                    <pre style={{
-                      background: 'rgba(0,0,0,0.5)',
-                      border: '1px solid rgba(255,255,255,0.06)',
-                      borderRadius: '8px',
-                      padding: '16px',
-                      fontSize: '10px',
-                      color: '#00D4AA',
-                      overflow: 'auto',
-                      maxHeight: '220px',
-                      lineHeight: 1.6,
-                      margin: 0
-                    }}>
-{JSON.stringify(activeTool.schema, null, 2)}
-                    </pre>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Notes */}
-            {server.notes && server.notes.length > 0 && (
-              <div>
-                <div style={{ fontSize: '10px', letterSpacing: '1px', color: 'rgba(255,255,255,0.4)', marginBottom: '12px' }}>
-                  IMPLEMENTATION NOTES
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  {server.notes.map((note, idx) => (
-                    <div key={idx} style={{
-                      padding: '8px 12px',
-                      background: 'rgba(255,255,255,0.02)',
-                      borderLeft: `2px solid ${server.color}40`,
-                      fontSize: '10px',
-                      color: 'rgba(255,255,255,0.7)'
-                    }}>
-                      {note}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  };
+  const availableTools = currentPlatform.tools.map(t => toolDefinitions[t]);
 
   return (
-    <div style={{
+    <div className="app" style={{
       minHeight: '100vh',
       background: 'linear-gradient(180deg, #0a0a0f 0%, #0d0d14 100%)',
       color: '#e4e4e7',
@@ -789,6 +293,7 @@ export default function DirecTVMCPExplorer() {
       display: 'flex',
       flexDirection: 'column'
     }}>
+      {/* Background grid */}
       <div style={{
         position: 'fixed',
         inset: 0,
@@ -797,9 +302,7 @@ export default function DirecTVMCPExplorer() {
         pointerEvents: 'none'
       }} />
 
-      {/* Modal */}
-      {modalContent && <Modal content={modalContent} onClose={() => setModalContent(null)} />}
-
+      {/* Header */}
       <header style={{
         padding: '12px 24px',
         borderBottom: '1px solid rgba(255,255,255,0.06)',
@@ -821,6 +324,7 @@ export default function DirecTVMCPExplorer() {
             </div>
           </div>
 
+          {/* Platform tabs */}
           <div style={{ display: 'flex', gap: '2px', background: 'rgba(255,255,255,0.03)', padding: '3px', borderRadius: '8px' }}>
             {Object.entries(platforms).map(([key, p]) => (
               <button
@@ -845,6 +349,7 @@ export default function DirecTVMCPExplorer() {
           </div>
         </div>
 
+        {/* Mode toggle */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', letterSpacing: '1px' }}>COMPARE</span>
           <div style={{ display: 'flex', background: 'rgba(255,255,255,0.03)', padding: '2px', borderRadius: '6px' }}>
@@ -870,17 +375,21 @@ export default function DirecTVMCPExplorer() {
         </div>
       </header>
 
+      {/* Main */}
       <main style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 380px', position: 'relative', zIndex: 10 }}>
         
+        {/* Left: Architecture */}
         <section style={{ padding: '24px', borderRight: '1px solid rgba(255,255,255,0.06)', overflow: 'auto' }}>
           
           {comparisonMode === 'mcp' ? (
             <>
+              {/* Architecture Diagram */}
               <div style={{ marginBottom: '24px' }}>
                 <div style={{ fontSize: '9px', letterSpacing: '2px', color: 'rgba(255,255,255,0.4)', marginBottom: '12px' }}>
-                  LIVE ARCHITECTURE — CLICK ANY COMPONENT FOR MCP SCHEMA
+                  LIVE ARCHITECTURE — CLICK ANY COMPONENT
                 </div>
 
+                {/* Platforms row */}
                 <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', marginBottom: '16px' }}>
                   {Object.entries(platforms).map(([key, p]) => {
                     const isActive = selectedPlatform === key;
@@ -888,7 +397,7 @@ export default function DirecTVMCPExplorer() {
                     return (
                       <div
                         key={key}
-                        onClick={() => setSelectedPlatform(key)}
+                        onClick={() => { setSelectedPlatform(key); setSelectedComponent({ type: 'platform', data: p }); }}
                         style={{
                           padding: '10px 16px',
                           background: isActive ? `${p.color}15` : 'rgba(255,255,255,0.02)',
@@ -908,6 +417,7 @@ export default function DirecTVMCPExplorer() {
                   })}
                 </div>
 
+                {/* Connection line */}
                 <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '8px' }}>
                   <div style={{
                     width: '2px',
@@ -919,8 +429,9 @@ export default function DirecTVMCPExplorer() {
                   }} />
                 </div>
 
+                {/* MCP Gateway */}
                 <div
-                  onClick={() => openServerModal('Gateway')}
+                  onClick={() => setSelectedComponent({ type: 'server', data: servers.Gateway })}
                   style={{
                     padding: '16px 24px',
                     background: activeFlow && flowStep >= 2 ? 'rgba(224,86,253,0.1)' : 'rgba(255,255,255,0.02)',
@@ -954,6 +465,7 @@ export default function DirecTVMCPExplorer() {
                   )}
                 </div>
 
+                {/* Connection to servers */}
                 <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '8px' }}>
                   <div style={{
                     width: '2px',
@@ -963,18 +475,19 @@ export default function DirecTVMCPExplorer() {
                   }} />
                 </div>
 
+                {/* Backend Servers */}
                 <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', marginBottom: '16px' }}>
                   {['VCG', 'Biller', 'Offers', 'WFE'].map(serverKey => {
-                    const server = serverDefinitions[serverKey];
+                    const server = servers[serverKey];
                     const isActive = activeFlow && (
                       activeFlow.tool.server === serverKey ||
-                      (activeFlow.tool.name === 'compare_bills' && ['VCG', 'Biller', 'Offers'].includes(serverKey))
+                      (activeFlow.tool.server === 'Multi' && ['VCG', 'Biller', 'Offers'].includes(serverKey))
                     ) && flowStep >= 4;
                     
                     return (
                       <div
                         key={serverKey}
-                        onClick={() => openServerModal(serverKey)}
+                        onClick={() => setSelectedComponent({ type: 'server', data: server })}
                         style={{
                           padding: '12px 16px',
                           background: isActive ? `${server.color}15` : 'rgba(255,255,255,0.02)',
@@ -996,6 +509,7 @@ export default function DirecTVMCPExplorer() {
                   })}
                 </div>
 
+                {/* MuleSoft */}
                 <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '8px' }}>
                   <div style={{
                     width: '2px',
@@ -1014,9 +528,10 @@ export default function DirecTVMCPExplorer() {
                   marginBottom: '8px'
                 }}>
                   <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.6)' }}>MuleSoft API Gateway</div>
-                  <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)' }}>OAuth 2.0 • ForgeRock IDP • Akamai WAF</div>
+                  <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)' }}>Existing Security • Tokens • Rate Limiting</div>
                 </div>
 
+                {/* Source Systems */}
                 <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '8px' }}>
                   <div style={{
                     width: '2px',
@@ -1037,9 +552,10 @@ export default function DirecTVMCPExplorer() {
                 </div>
               </div>
 
+              {/* Tools Grid */}
               <div>
                 <div style={{ fontSize: '9px', letterSpacing: '2px', color: 'rgba(255,255,255,0.4)', marginBottom: '12px' }}>
-                  {currentPlatform.name.toUpperCase()} TOOLS ({currentPlatform.tools.length} of {Object.keys(toolDefinitions).length})
+                  {currentPlatform.name.toUpperCase()} TOOLS ({availableTools.length} of {Object.keys(toolDefinitions).length})
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
                   {Object.entries(toolDefinitions).map(([key, tool]) => {
@@ -1048,7 +564,7 @@ export default function DirecTVMCPExplorer() {
                     return (
                       <div
                         key={key}
-                        onClick={() => hasAccess && openServerModal(tool.server)}
+                        onClick={() => hasAccess && setSelectedComponent({ type: 'tool', data: tool })}
                         style={{
                           padding: '10px',
                           background: isActive ? `${currentPlatform.color}15` : hasAccess ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.01)',
@@ -1079,8 +595,50 @@ export default function DirecTVMCPExplorer() {
                   })}
                 </div>
               </div>
+
+              {/* Component Details Panel */}
+              {selectedComponent && (
+                <div style={{
+                  marginTop: '16px',
+                  padding: '16px',
+                  background: 'rgba(255,255,255,0.03)',
+                  border: '1px solid rgba(255,255,255,0.06)',
+                  borderRadius: '8px'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '8px' }}>
+                    <div style={{ fontSize: '11px', fontWeight: 600, color: '#fff' }}>
+                      {selectedComponent.data.name || selectedComponent.data.fullName}
+                    </div>
+                    <button
+                      onClick={() => setSelectedComponent(null)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: 'rgba(255,255,255,0.4)',
+                        cursor: 'pointer',
+                        fontSize: '14px',
+                        padding: 0
+                      }}
+                    >×</button>
+                  </div>
+                  <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.6)', lineHeight: 1.5 }}>
+                    {selectedComponent.data.description}
+                  </div>
+                  {selectedComponent.data.latency && (
+                    <div style={{ marginTop: '8px', fontSize: '9px', color: currentPlatform.color }}>
+                      Latency: {selectedComponent.data.latency}
+                    </div>
+                  )}
+                  {selectedComponent.data.tools && (
+                    <div style={{ marginTop: '8px', fontSize: '9px', color: 'rgba(255,255,255,0.5)' }}>
+                      Tools: {selectedComponent.data.tools.length}
+                    </div>
+                  )}
+                </div>
+              )}
             </>
           ) : (
+            /* Data Lake Comparison View */
             <div>
               <div style={{ fontSize: '9px', letterSpacing: '2px', color: 'rgba(255,255,255,0.4)', marginBottom: '16px' }}>
                 WHY NOT DATA LAKE?
@@ -1094,12 +652,12 @@ export default function DirecTVMCPExplorer() {
                   borderRadius: '12px'
                 }}>
                   <div style={{ fontSize: '12px', fontWeight: 600, color: '#ff6b6b', marginBottom: '12px' }}>
-                    ❌ Data Lake / Snowflake
+                    ❌ Data Lake Approach
                   </div>
                   <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.7)', lineHeight: 1.7 }}>
                     <div style={{ marginBottom: '8px' }}>• <strong>24hr latency</strong> — Snowflake runs behind</div>
-                    <div style={{ marginBottom: '8px' }}>• <strong>Replication burden</strong> — "Will get into trouble" — Sumit</div>
-                    <div style={{ marginBottom: '8px' }}>• <strong>Multiple truths</strong> — "Minimize alternate truth" — Miles</div>
+                    <div style={{ marginBottom: '8px' }}>• <strong>Replication burden</strong> — Sync failures = support load</div>
+                    <div style={{ marginBottom: '8px' }}>• <strong>Multiple truths</strong> — Data drift from golden sources</div>
                     <div style={{ marginBottom: '8px' }}>• <strong>Read-only</strong> — Can't support transactions</div>
                     <div>• <strong>Per-platform work</strong> — Each AI needs custom integration</div>
                   </div>
@@ -1112,14 +670,14 @@ export default function DirecTVMCPExplorer() {
                   borderRadius: '12px'
                 }}>
                   <div style={{ fontSize: '12px', fontWeight: 600, color: '#00D4AA', marginBottom: '12px' }}>
-                    ✓ MCP Gateway via APIs
+                    ✓ MCP Gateway Approach
                   </div>
                   <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.7)', lineHeight: 1.7 }}>
-                    <div style={{ marginBottom: '8px' }}>• <strong>Real-time</strong> — Direct API access via MuleSoft</div>
-                    <div style={{ marginBottom: '8px' }}>• <strong>No replication</strong> — Uses existing API infrastructure</div>
+                    <div style={{ marginBottom: '8px' }}>• <strong>Real-time</strong> — Direct API access to sources</div>
+                    <div style={{ marginBottom: '8px' }}>• <strong>No replication</strong> — Uses existing MuleSoft APIs</div>
                     <div style={{ marginBottom: '8px' }}>• <strong>Golden sources</strong> — VCG, Billers stay authoritative</div>
-                    <div style={{ marginBottom: '8px' }}>• <strong>Read + Write</strong> — Transactional capabilities (2026)</div>
-                    <div>• <strong>Build once</strong> — Sierra, Agent Force, Genesis share gateway</div>
+                    <div style={{ marginBottom: '8px' }}>• <strong>Read + Write</strong> — Transactional capabilities</div>
+                    <div>• <strong>Build once</strong> — All platforms share same gateway</div>
                   </div>
                 </div>
               </div>
@@ -1137,6 +695,7 @@ export default function DirecTVMCPExplorer() {
                 </div>
               </div>
 
+              {/* Comparison table */}
               <div style={{ marginTop: '24px' }}>
                 <div style={{ fontSize: '9px', letterSpacing: '2px', color: 'rgba(255,255,255,0.4)', marginBottom: '12px' }}>
                   HEAD-TO-HEAD COMPARISON
@@ -1145,14 +704,14 @@ export default function DirecTVMCPExplorer() {
                   <thead>
                     <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
                       <th style={{ padding: '8px', textAlign: 'left', color: 'rgba(255,255,255,0.5)' }}>Criterion</th>
-                      <th style={{ padding: '8px', textAlign: 'center', color: '#ff6b6b' }}>Snowflake</th>
+                      <th style={{ padding: '8px', textAlign: 'center', color: '#ff6b6b' }}>Data Lake</th>
                       <th style={{ padding: '8px', textAlign: 'center', color: '#00D4AA' }}>MCP</th>
                     </tr>
                   </thead>
                   <tbody>
                     {[
                       ['Data Freshness', '24-hour lag', 'Real-time'],
-                      ['Maintenance', 'Sync issues', 'None'],
+                      ['Maintenance', 'Ongoing sync', 'None'],
                       ['Source of Truth', 'Creates alternate', 'Preserves golden'],
                       ['Transactions', 'Read-only', 'Read + Write'],
                       ['Multi-Platform', 'Separate per platform', 'Single gateway'],
@@ -1171,7 +730,9 @@ export default function DirecTVMCPExplorer() {
           )}
         </section>
 
+        {/* Right: Chat Interface */}
         <section style={{ display: 'flex', flexDirection: 'column', background: 'rgba(0,0,0,0.2)' }}>
+          {/* Chat header */}
           <div style={{
             padding: '12px 16px',
             borderBottom: '1px solid rgba(255,255,255,0.06)',
@@ -1191,6 +752,7 @@ export default function DirecTVMCPExplorer() {
             </span>
           </div>
 
+          {/* Messages */}
           <div style={{ flex: 1, overflow: 'auto', padding: '16px' }}>
             {conversation.length === 0 && (
               <div style={{ textAlign: 'center', padding: '32px 16px' }}>
@@ -1277,6 +839,7 @@ export default function DirecTVMCPExplorer() {
             <div ref={chatEndRef} />
           </div>
 
+          {/* Input */}
           <div style={{ padding: '16px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
             <div style={{ display: 'flex', gap: '8px' }}>
               <input
@@ -1338,6 +901,9 @@ export default function DirecTVMCPExplorer() {
         ::-webkit-scrollbar-thumb {
           background: rgba(255,255,255,0.1);
           border-radius: 3px;
+        }
+        * {
+          box-sizing: border-box;
         }
       `}</style>
     </div>
